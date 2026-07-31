@@ -1,38 +1,117 @@
+using System.Collections;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
-public class PlayerShooting : MonoBehaviour
+public class Gun : MonoBehaviour
 {
-    public Gun gun;
-    private bool isHoldingShoot;
+    [Header("Gun Settings")]
+    public float reloadTime = 1f;
+    public float fireRate = 0.15f;
+    public int maxSize = 20;
+    public GameObject bullet;
+    public Transform bulletSpawnPoint;
+    public GameObject weaponFlash;
+    public GameObject droppedWeapon;
 
-// Triggered by 'Shoot' action in Input System
-    public void OnShoot()
+    [Header("Recoil Settings")]
+    public float recoilDistance = 0.1f;
+    public float recoilSpeed = 15f;
+    public Vector3 reloadRotationOffset = new Vector3(60, 50, 50);
+
+    private int currentAmmo;
+    private bool isReloading = false;
+    private float nextTimeToFire = 0f;
+    private Quaternion initialRotation;
+    private Vector3 initialPosition;
+
+    void Start()
     {
-        isHoldingShoot = true;
+        currentAmmo = maxSize;
+        initialRotation = transform.localRotation;
+        initialPosition = transform.localPosition;
     }
 
-// Triggered by 'Shoot Release' action
-    public void OnShootRelease()
+    public void Shoot()
     {
-        isHoldingShoot = false;
-    }
+        if (isReloading || Time.time < nextTimeToFire) return;
 
-// Triggered by 'Reload' action (Pressing R)
-    public void OnReload()
-    {
-        if (gun != null)
+        if (currentAmmo <= 0)
         {
-            gun.TryReload();
+            StartCoroutine(Reload());
+            return;
+        }
+
+        nextTimeToFire = Time.time + fireRate;
+        currentAmmo--;
+
+        Instantiate(bullet, bulletSpawnPoint.position, bulletSpawnPoint.rotation);
+        Instantiate(weaponFlash, bulletSpawnPoint.position, bulletSpawnPoint.rotation);
+
+        StopCoroutine(nameof(Recoil));
+        StartCoroutine(nameof(Recoil));
+    }
+
+    public void TryReload()
+    {
+        if (!isReloading && currentAmmo < maxSize)
+        {
+            StartCoroutine(Reload());
         }
     }
 
-    void Update()
+    private IEnumerator Reload()
     {
-// Continuously fire if holding the mouse button
-        if (isHoldingShoot && gun != null)
+        isReloading = true;
+        Quaternion targetRotation = Quaternion.Euler(initialRotation.eulerAngles + reloadRotationOffset);
+        float halfReload = reloadTime / 2;
+        float t = 0;
+
+        // Rotate to reload position
+        while (t < halfReload)
         {
-            gun.Shoot();
+            t += Time.deltaTime;
+            transform.localRotation = Quaternion.Lerp(initialRotation, targetRotation, t / halfReload);
+            yield return null;
         }
+
+        // Rotate back
+        t = 0;
+        while (t < halfReload)
+        {
+            t += Time.deltaTime;
+            transform.localRotation = Quaternion.Lerp(targetRotation, initialRotation, t / halfReload);
+            yield return null;
+        }
+
+        currentAmmo = maxSize;
+        isReloading = false;
+    }
+
+    private IEnumerator Recoil()
+    {
+        Vector3 recoilTarget = initialPosition + new Vector3(0, 0, recoilDistance);
+        float t = 0;
+
+        while (t < 1f)
+        {
+            t += Time.deltaTime * recoilSpeed;
+            transform.localPosition = Vector3.Lerp(initialPosition, recoilTarget, t);
+            yield return null;
+        }
+
+        t = 0;
+        while (t < 1f)
+        {
+            t += Time.deltaTime * recoilSpeed;
+            transform.localPosition = Vector3.Lerp(recoilTarget, initialPosition, t);
+            yield return null;
+        }
+
+        transform.localPosition = initialPosition;
+    }
+
+    public void Drop()
+    {
+        Instantiate(droppedWeapon, transform.position, transform.rotation);
+        Destroy(gameObject);
     }
 }
